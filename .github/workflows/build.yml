@@ -3,11 +3,11 @@ name: Build Astraeus Dylib
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # This adds a manual "Start" button
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-latest # We need a Mac in the cloud to build for iOS
+    runs-on: macos-latest
 
     steps:
     - name: Checkout Code
@@ -23,8 +23,8 @@ jobs:
         export THEOS=$GITHUB_WORKSPACE/theos
         make package FINALPACKAGE=1
 
-- name: Upload Dylib Artifact
+    - name: Upload Dylib Artifact
       uses: actions/upload-artifact@v4
       with:
         name: Astraeus-Dylib
-        path: .theos/obj/**/*.dylib # This looks in EVERY folder for the dylib
+        path: .theos/obj/**/*.dylib
