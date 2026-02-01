@@ -1,10 +1,11 @@
 #import <UIKit/UIKit.h>
 #import <substrate.h>
 #import <mach-o/dyld.h>
+#import <dlfcn.h> // <--- THIS WAS THE MISSING PIECE
 
-// --- STRUCTURES & GLOBALS ---
 typedef struct Vector3 { float x; float y; float z; } Vector3;
 
+// --- INTERNAL UNITY/IL2CPP HOOKS ---
 static void* (*il2cpp_runtime_invoke)(void* method, void* obj, void** params, void** exc);
 static void* (*il2cpp_string_new)(const char* str);
 static void* _spawnItemMethod;
@@ -15,7 +16,6 @@ static void* _addMoneyMethod;
 @implementation AstraeusWindow
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hitView = [super hitTest:point withEvent:event];
-    // If user touches empty space, pass it to AC Companion game
     if (hitView == self || hitView == self.rootViewController.view) return nil;
     return hitView;
 }
@@ -41,7 +41,7 @@ static void* _addMoneyMethod;
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
     
-    // FULL ITEM LIST FROM YOUR DUMP
+    // FULL ITEM LIST
     self.availableItems = @[
         @"item_ac_cola", @"item_alphablade", @"item_anti_gravity_grenade", @"item_axe", @"item_backpack",
         @"item_banana", @"item_baseball_bat", @"item_boombox", @"item_demon_sword", @"item_flamethrower_skull",
@@ -54,7 +54,6 @@ static void* _addMoneyMethod;
     [self setupMainUI];
 }
 
-// --- FLOATING BUTTON ---
 - (void)setupFloatingButton {
     self.circleButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.circleButton.frame = CGRectMake(50, 100, 60, 60);
@@ -63,7 +62,6 @@ static void* _addMoneyMethod;
     self.circleButton.layer.borderWidth = 2;
     self.circleButton.layer.borderColor = [UIColor whiteColor].CGColor;
     [self.circleButton setTitle:@"A" forState:UIControlStateNormal];
-    self.circleButton.titleLabel.font = [UIFont boldSystemFontOfSize:22];
     
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
     [self.circleButton addGestureRecognizer:pan];
@@ -77,7 +75,6 @@ static void* _addMoneyMethod;
     [p setTranslation:CGPointZero inView:self.view];
 }
 
-// --- MAIN UI ---
 - (void)setupMainUI {
     self.blurContainer = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     self.blurContainer.frame = CGRectMake(0, 0, 330, 500);
@@ -89,7 +86,6 @@ static void* _addMoneyMethod;
     self.blurContainer.hidden = YES;
     [self.view addSubview:self.blurContainer];
 
-    // BRANDING
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 330, 25)];
     title.text = @"Astraeus - AC Mod Menu";
     title.textColor = [UIColor purpleColor];
@@ -97,7 +93,6 @@ static void* _addMoneyMethod;
     title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightHeavy];
     [self.blurContainer.contentView addSubview:title];
 
-    // CLOSE BUTTON
     UIButton *close = [[UIButton alloc] initWithFrame:CGRectMake(285, 10, 30, 30)];
     [close setTitle:@"✕" forState:UIControlStateNormal];
     close.backgroundColor = [UIColor colorWithRed:0.8 green:0.2 blue:0.2 alpha:1.0];
@@ -105,7 +100,6 @@ static void* _addMoneyMethod;
     [close addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
     [self.blurContainer.contentView addSubview:close];
 
-    // TABS
     self.tabControl = [[UISegmentedControl alloc] initWithItems:@[@"Items", @"Settings", @"Money"]];
     self.tabControl.frame = CGRectMake(20, 50, 290, 30);
     self.tabControl.selectedSegmentIndex = 0;
@@ -116,7 +110,7 @@ static void* _addMoneyMethod;
 }
 
 - (void)setupSubViews {
-    // 1. ITEMS VIEW
+    // ITEMS VIEW
     self.itemsView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
     
     self.searchBar = [[UITextField alloc] initWithFrame:CGRectMake(20, 0, 290, 35)];
@@ -130,6 +124,7 @@ static void* _addMoneyMethod;
 
     self.itemPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(0, 40, 330, 120)];
     self.itemPicker.delegate = self;
+    self.itemPicker.dataSource = self;
     [self.itemsView addSubview:self.itemPicker];
 
     self.qtyLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 170, 150, 30)];
@@ -152,7 +147,7 @@ static void* _addMoneyMethod;
 
     [self.blurContainer.contentView addSubview:self.itemsView];
 
-    // 2. SETTINGS VIEW (XYZ)
+    // SETTINGS VIEW (XYZ)
     self.settingsView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
     self.settingsView.hidden = YES;
     self.xField = [self addField:@"X" at:40];
@@ -160,7 +155,7 @@ static void* _addMoneyMethod;
     self.zField = [self addField:@"Z" at:140];
     [self.blurContainer.contentView addSubview:self.settingsView];
 
-    // 3. MONEY VIEW
+    // MONEY VIEW
     self.moneyView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
     self.moneyView.hidden = YES;
     UIButton *moneyBtn = [[UIButton alloc] initWithFrame:CGRectMake(65, 50, 200, 50)];
@@ -172,7 +167,6 @@ static void* _addMoneyMethod;
     [self.blurContainer.contentView addSubview:self.moneyView];
 }
 
-// --- ACTIONS ---
 - (void)tabChanged {
     self.itemsView.hidden = (self.tabControl.selectedSegmentIndex != 0);
     self.settingsView.hidden = (self.tabControl.selectedSegmentIndex != 1);
@@ -192,6 +186,7 @@ static void* _addMoneyMethod;
 }
 
 - (void)onSpawn {
+    if(!il2cpp_runtime_invoke || !il2cpp_string_new) return;
     NSString *item = self.filteredItems[[self.itemPicker selectedRowInComponent:0]];
     Vector3 pos = {[self.xField.text floatValue], [self.yField.text floatValue], [self.zField.text floatValue]};
     for (int i=0; i<(int)self.qtyStepper.value; i++) {
@@ -201,6 +196,7 @@ static void* _addMoneyMethod;
 }
 
 - (void)onMoney {
+    if(!il2cpp_runtime_invoke) return;
     int amount = 9999999;
     void* args[1] = { &amount };
     il2cpp_runtime_invoke(_addMoneyMethod, NULL, args, NULL);
@@ -221,7 +217,6 @@ static void* _addMoneyMethod;
     [self.settingsView addSubview:f]; return f;
 }
 
-// PICKER PROTOCOLS
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)p { return 1; }
 - (NSInteger)pickerView:(UIPickerView *)p numberOfRowsInComponent:(NSInteger)c { return self.filteredItems.count; }
 - (NSString *)pickerView:(UIPickerView *)p titleForRow:(NSInteger)r forComponent:(NSInteger)c { return self.filteredItems[r]; }
@@ -232,8 +227,10 @@ static void* _addMoneyMethod;
 static AstraeusWindow *modWindow;
 %ctor {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        il2cpp_runtime_invoke = (void*(*)(void*,void*,void**,void**))dlsym(RTLD_DEFAULT, "il2cpp_runtime_invoke");
-        il2cpp_string_new = (void*(*)(const char*))dlsym(RTLD_DEFAULT, "il2cpp_string_new");
+        // Corrected dlsym calls with proper headers imported
+        void *handle = RTLD_DEFAULT;
+        il2cpp_runtime_invoke = (void*(*)(void*,void*,void**,void**))dlsym(handle, "il2cpp_runtime_invoke");
+        il2cpp_string_new = (void*(*)(const char*))dlsym(handle, "il2cpp_string_new");
         
         modWindow = [[AstraeusWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         modWindow.rootViewController = [[ModMenuController alloc] init];
