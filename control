@@ -1,0 +1,8 @@
+Package: com.actools.astraeus
+Name: AstraeusMenu
+Depends: mobilesubstrate
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Custom Menu for Animal Company
+Author: Admin
+Section: Tweaks
