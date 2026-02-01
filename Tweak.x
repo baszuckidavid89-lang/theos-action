@@ -2,17 +2,14 @@
 #import <mach-o/dyld.h>
 #import <substrate.h>
 
-// --- 1. Vector3 Struct for Unity Math ---
 typedef struct Vector3 {
     float x; float y; float z;
 } Vector3;
 
-// --- 2. GameHelper Interface ---
 @interface GameHelper : NSObject
 + (instancetype)shared;
 - (Vector3)getCameraPosition;
 - (void)spawnItem:(NSString *)name at:(Vector3)pos;
-@property (nonatomic, assign) void* spawnMethod;
 @end
 
 @implementation GameHelper
@@ -24,11 +21,10 @@ typedef struct Vector3 {
 }
 - (Vector3)getCameraPosition { return (Vector3){0, 0, 0}; }
 - (void)spawnItem:(NSString *)name at:(Vector3)pos {
-    // Logic to call il2cpp_runtime_invoke with name and pos
+    // IL2CPP Resolve Logic
 }
 @end
 
-// --- 3. Mod Menu Controller ---
 @interface ModMenuController : UIViewController <UIPickerViewDelegate, UIPickerViewDataSource>
 @property (nonatomic, strong) UIView *container;
 @property (nonatomic, strong) UIButton *menuToggleButton;
@@ -43,8 +39,6 @@ typedef struct Vector3 {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    
-    // Paste your items here
     self.availableItems = @[@"stellarsword_blue", @"flamethrower_skull", @"rpg_smshr", @"item_backpack"];
     
     [self setupToggleButton];
@@ -52,17 +46,21 @@ typedef struct Vector3 {
 }
 
 - (void)setupToggleButton {
-    // iPhone 11 Pro Max Safe Position
-    self.menuToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.menuToggleButton.frame = CGRectMake(50, 100, 80, 45); 
-    [self.menuToggleButton setTitle:@"ASTRAEUS" forState:UIControlStateNormal];
-    self.menuToggleButton.backgroundColor = [[UIColor purpleColor] colorWithAlphaComponent:0.9];
+    // Making it a Big Purple Circle (60x60)
+    self.menuToggleButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.menuToggleButton.frame = CGRectMake(20, 60, 65, 65); 
+    self.menuToggleButton.backgroundColor = [UIColor purpleColor];
+    [self.menuToggleButton setTitle:@"M" forState:UIControlStateNormal]; // "M" for Menu
     [self.menuToggleButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.menuToggleButton.layer.cornerRadius = 12;
-    self.menuToggleButton.layer.borderWidth = 1.5;
+    self.menuToggleButton.titleLabel.font = [UIFont boldSystemFontOfSize:22];
+    
+    // This makes it a perfect circle
+    self.menuToggleButton.layer.cornerRadius = 32.5; 
+    self.menuToggleButton.clipsToBounds = YES;
+    self.menuToggleButton.layer.borderWidth = 2.0;
     self.menuToggleButton.layer.borderColor = [UIColor whiteColor].CGColor;
     
-    // Draggable Logic
+    // Draggable & Actions
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
     [self.menuToggleButton addGestureRecognizer:pan];
     [self.menuToggleButton addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
@@ -87,19 +85,16 @@ typedef struct Vector3 {
     self.container.hidden = YES; 
     [self.view addSubview:self.container];
 
-    // Close Button
     UIButton *close = [[UIButton alloc] initWithFrame:CGRectMake(300, 15, 30, 30)];
     [close setTitle:@"✕" forState:UIControlStateNormal];
     [close setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
     [close addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
     [self.container addSubview:close];
 
-    // XYZ Override Fields
     self.xIn = [self addField:@"X Offset" at:60];
     self.yIn = [self addField:@"Y Offset" at:100];
     self.zIn = [self addField:@"Z Offset" at:140];
 
-    // Quantity Slider (1 to 50)
     self.qtyLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 185, 300, 20)];
     self.qtyLabel.text = @"Quantity: 1";
     self.qtyLabel.textColor = [UIColor whiteColor];
@@ -110,23 +105,19 @@ typedef struct Vector3 {
     self.qtySlider.minimumValue = 1;
     self.qtySlider.maximumValue = 50;
     self.qtySlider.value = 1;
-    self.qtySlider.minimumTrackTintColor = [UIColor purpleColor];
     [self.qtySlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
     [self.container addSubview:self.qtySlider];
 
-    // Picker View
     self.itemPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(10, 250, 320, 140)];
     self.itemPicker.delegate = self;
     self.itemPicker.dataSource = self;
     [self.container addSubview:self.itemPicker];
 
-    // Big Generate Button
     UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     spawnBtn.frame = CGRectMake(70, 420, 200, 55);
     [spawnBtn setTitle:@"GENERATE ITEMS" forState:UIControlStateNormal];
     spawnBtn.backgroundColor = [UIColor greenColor];
     [spawnBtn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-    spawnBtn.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     spawnBtn.layer.cornerRadius = 15;
     [spawnBtn addTarget:self action:@selector(doSpawn) forControlEvents:UIControlEventTouchUpInside];
     [self.container addSubview:spawnBtn];
@@ -137,18 +128,18 @@ typedef struct Vector3 {
     t.placeholder = ph;
     t.backgroundColor = [UIColor whiteColor];
     t.borderStyle = UITextBorderStyleRoundedRect;
-    t.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
     [self.container addSubview:t];
     return t;
 }
 
 - (void)sliderChanged:(UISlider *)sender {
-    int val = (int)sender.value;
-    self.qtyLabel.text = [NSString stringWithFormat:@"Quantity: %d", val];
+    self.qtyLabel.text = [NSString stringWithFormat:@"Quantity: %d", (int)sender.value];
 }
 
 - (void)toggleMenu {
     self.container.hidden = !self.container.hidden;
+    // Keep circle button visible unless menu is open
+    self.menuToggleButton.hidden = !self.container.hidden;
     [self.view endEditing:YES];
 }
 
@@ -161,32 +152,31 @@ typedef struct Vector3 {
     } else {
         pos = [[GameHelper shared] getCameraPosition];
     }
-
-    NSString *selectedID = self.availableItems[[self.itemPicker selectedRowInComponent:0]];
     int count = (int)self.qtySlider.value;
-
     for (int i = 0; i < count; i++) {
         Vector3 jitter = pos;
-        jitter.x += (i * 0.12f); // Prevent physics explosions
-        [[GameHelper shared] spawnItem:selectedID at:jitter];
+        jitter.x += (i * 0.12f);
+        [[GameHelper shared] spawnItem:self.availableItems[[self.itemPicker selectedRowInComponent:0]] at:jitter];
     }
 }
 
-// --- UIPickerView Implementation ---
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)p { return 1; }
 - (NSInteger)pickerView:(UIPickerView *)p numberOfRowsInComponent:(NSInteger)c { return self.availableItems.count; }
 - (NSString *)pickerView:(UIPickerView *)p titleForRow:(NSInteger)r forComponent:(NSInteger)c { return self.availableItems[r]; }
 
-// --- Orientation Handling ---
+// Logic to keep menu centered and button in Top-Left safe zone
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coord {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coord];
     [coord animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
         self.container.center = CGPointMake(size.width / 2, size.height / 2);
+        // Reset button position if it gets "lost" during rotation
+        if (self.menuToggleButton.frame.origin.x > size.width) {
+             self.menuToggleButton.frame = CGRectMake(20, 60, 65, 65);
+        }
     } completion:nil];
 }
 @end
 
-// --- 4. Tweak Entry Hook ---
 %hook UnityFramework
 - (void)onUnityUpdate {
     %orig;
@@ -194,12 +184,10 @@ typedef struct Vector3 {
     dispatch_once(&t, ^{
         ModMenuController *m = [[ModMenuController alloc] init];
         UIWindow *w = [[UIApplication sharedApplication] keyWindow];
+        // High priority window level to stay above Unity
+        w.windowLevel = UIWindowLevelStatusBar + 1; 
         [w.rootViewController addChildViewController:m];
         [w addSubview:m.view];
     });
 }
 %end
-
-%ctor {
-    NSLog(@"[Astraeus] Fully Featured Menu Initialized for iPhone 11 Pro Max.");
-}
