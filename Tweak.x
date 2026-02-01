@@ -1,21 +1,26 @@
 #import <UIKit/UIKit.h>
 #import <substrate.h>
 #import <mach-o/dyld.h>
-#import <dlfcn.h> // <--- THIS WAS THE MISSING PIECE
+#import <dlfcn.h> // Fixed: Required for dlsym/RTLD_DEFAULT
 
+// --- DATA STRUCTURES ---
 typedef struct Vector3 { float x; float y; float z; } Vector3;
 
-// --- INTERNAL UNITY/IL2CPP HOOKS ---
+// --- IL2CPP FUNCTION POINTERS ---
 static void* (*il2cpp_runtime_invoke)(void* method, void* obj, void** params, void** exc);
 static void* (*il2cpp_string_new)(const char* str);
+
+// --- GAME METHODS (Drawn from your Symbol Dump) ---
 static void* _spawnItemMethod;
 static void* _addMoneyMethod;
 
-// --- CUSTOM PASSTHROUGH WINDOW ---
+// --- TOUCH PASSTHROUGH WINDOW FIX ---
+// This ensures the mod menu doesn't block game touches
 @interface AstraeusWindow : UIWindow @end
 @implementation AstraeusWindow
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hitView = [super hitTest:point withEvent:event];
+    // If the touch is on the background or the root view itself, return nil to pass it to the game
     if (hitView == self || hitView == self.rootViewController.view) return nil;
     return hitView;
 }
@@ -41,12 +46,13 @@ static void* _addMoneyMethod;
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
     
-    // FULL ITEM LIST
+    // FULL ITEM LIST (Expanded from your prompt)
     self.availableItems = @[
         @"item_ac_cola", @"item_alphablade", @"item_anti_gravity_grenade", @"item_axe", @"item_backpack",
         @"item_banana", @"item_baseball_bat", @"item_boombox", @"item_demon_sword", @"item_flamethrower_skull",
         @"item_grenade_gold", @"item_jetpack", @"item_moneygun", @"item_pickaxe_cube", @"item_rpg_ammo",
-        @"item_shotgun_ammo", @"item_flaregun", @"item_flashbang", @"item_hookshot", @"item_landmine"
+        @"item_shotgun_ammo", @"item_flaregun", @"item_flashbang", @"item_hookshot", @"item_landmine",
+        @"item_boombox_neon", @"item_goldbar", @"item_goldcoin", @"item_hoverpad"
     ];
     self.filteredItems = [self.availableItems mutableCopy];
 
@@ -54,6 +60,7 @@ static void* _addMoneyMethod;
     [self setupMainUI];
 }
 
+// --- FLOATING "A" BUTTON ---
 - (void)setupFloatingButton {
     self.circleButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.circleButton.frame = CGRectMake(50, 100, 60, 60);
@@ -62,6 +69,7 @@ static void* _addMoneyMethod;
     self.circleButton.layer.borderWidth = 2;
     self.circleButton.layer.borderColor = [UIColor whiteColor].CGColor;
     [self.circleButton setTitle:@"A" forState:UIControlStateNormal];
+    self.circleButton.titleLabel.font = [UIFont boldSystemFontOfSize:22];
     
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
     [self.circleButton addGestureRecognizer:pan];
@@ -75,6 +83,7 @@ static void* _addMoneyMethod;
     [p setTranslation:CGPointZero inView:self.view];
 }
 
+// --- MAIN UI DESIGN ---
 - (void)setupMainUI {
     self.blurContainer = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     self.blurContainer.frame = CGRectMake(0, 0, 330, 500);
@@ -103,6 +112,7 @@ static void* _addMoneyMethod;
     self.tabControl = [[UISegmentedControl alloc] initWithItems:@[@"Items", @"Settings", @"Money"]];
     self.tabControl.frame = CGRectMake(20, 50, 290, 30);
     self.tabControl.selectedSegmentIndex = 0;
+    self.tabControl.selectedSegmentTintColor = [UIColor purpleColor];
     [self.tabControl addTarget:self action:@selector(tabChanged) forControlEvents:UIControlEventValueChanged];
     [self.blurContainer.contentView addSubview:self.tabControl];
 
@@ -110,11 +120,10 @@ static void* _addMoneyMethod;
 }
 
 - (void)setupSubViews {
-    // ITEMS VIEW
+    // 1. ITEMS VIEW
     self.itemsView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
-    
     self.searchBar = [[UITextField alloc] initWithFrame:CGRectMake(20, 0, 290, 35)];
-    self.searchBar.placeholder = @"Search Items...";
+    self.searchBar.placeholder = @"Search Item IDs...";
     self.searchBar.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.1];
     self.searchBar.textColor = [UIColor whiteColor];
     self.searchBar.layer.cornerRadius = 10;
@@ -144,18 +153,17 @@ static void* _addMoneyMethod;
     [spawn setTitle:@"SPAWN ITEM" forState:UIControlStateNormal];
     [spawn addTarget:self action:@selector(onSpawn) forControlEvents:UIControlEventTouchUpInside];
     [self.itemsView addSubview:spawn];
-
     [self.blurContainer.contentView addSubview:self.itemsView];
 
-    // SETTINGS VIEW (XYZ)
+    // 2. SETTINGS VIEW (XYZ)
     self.settingsView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
     self.settingsView.hidden = YES;
-    self.xField = [self addField:@"X" at:40];
-    self.yField = [self addField:@"Y" at:90];
-    self.zField = [self addField:@"Z" at:140];
+    self.xField = [self addField:@"X Coordinate" at:40];
+    self.yField = [self addField:@"Y Coordinate" at:90];
+    self.zField = [self addField:@"Z Coordinate" at:140];
     [self.blurContainer.contentView addSubview:self.settingsView];
 
-    // MONEY VIEW
+    // 3. MONEY VIEW
     self.moneyView = [[UIView alloc] initWithFrame:CGRectMake(0, 90, 330, 400)];
     self.moneyView.hidden = YES;
     UIButton *moneyBtn = [[UIButton alloc] initWithFrame:CGRectMake(65, 50, 200, 50)];
@@ -167,6 +175,7 @@ static void* _addMoneyMethod;
     [self.blurContainer.contentView addSubview:self.moneyView];
 }
 
+// --- LOGIC FUNCTIONS ---
 - (void)tabChanged {
     self.itemsView.hidden = (self.tabControl.selectedSegmentIndex != 0);
     self.settingsView.hidden = (self.tabControl.selectedSegmentIndex != 1);
@@ -186,9 +195,10 @@ static void* _addMoneyMethod;
 }
 
 - (void)onSpawn {
-    if(!il2cpp_runtime_invoke || !il2cpp_string_new) return;
+    if (!il2cpp_runtime_invoke) return;
     NSString *item = self.filteredItems[[self.itemPicker selectedRowInComponent:0]];
     Vector3 pos = {[self.xField.text floatValue], [self.yField.text floatValue], [self.zField.text floatValue]};
+    
     for (int i=0; i<(int)self.qtyStepper.value; i++) {
         void* args[2] = { il2cpp_string_new([item UTF8String]), &pos };
         il2cpp_runtime_invoke(_spawnItemMethod, NULL, args, NULL);
@@ -196,7 +206,7 @@ static void* _addMoneyMethod;
 }
 
 - (void)onMoney {
-    if(!il2cpp_runtime_invoke) return;
+    if (!_addMoneyMethod) return;
     int amount = 9999999;
     void* args[1] = { &amount };
     il2cpp_runtime_invoke(_addMoneyMethod, NULL, args, NULL);
@@ -214,24 +224,32 @@ static void* _addMoneyMethod;
     UITextField *f = [[UITextField alloc] initWithFrame:CGRectMake(40, y, 250, 35)];
     f.placeholder = p; f.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.1];
     f.textColor = [UIColor whiteColor]; f.layer.cornerRadius = 8;
+    f.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
     [self.settingsView addSubview:f]; return f;
 }
 
+// PICKER DELEGATES
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)p { return 1; }
 - (NSInteger)pickerView:(UIPickerView *)p numberOfRowsInComponent:(NSInteger)c { return self.filteredItems.count; }
 - (NSString *)pickerView:(UIPickerView *)p titleForRow:(NSInteger)r forComponent:(NSInteger)c { return self.filteredItems[r]; }
 
 @end
 
-// --- INJECTION ---
+// --- THE INJECTOR ---
 static AstraeusWindow *modWindow;
+
 %ctor {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        // Corrected dlsym calls with proper headers imported
+        // Link to IL2CPP Logic
         void *handle = RTLD_DEFAULT;
         il2cpp_runtime_invoke = (void*(*)(void*,void*,void**,void**))dlsym(handle, "il2cpp_runtime_invoke");
         il2cpp_string_new = (void*(*)(const char*))dlsym(handle, "il2cpp_string_new");
         
+        // Target methods from your dump
+        _spawnItemMethod = (void*)dlsym(handle, "SpawnItem");
+        _addMoneyMethod = (void*)dlsym(handle, "AddMoneyToPlayer");
+
+        // Initialize Mod Window
         modWindow = [[AstraeusWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         modWindow.rootViewController = [[ModMenuController alloc] init];
         modWindow.windowLevel = UIWindowLevelStatusBar + 1;
