@@ -2,6 +2,7 @@
 #import <mach-o/dyld.h>
 #import <substrate.h>
 
+// --- Structs & Helpers ---
 typedef struct Vector3 {
     float x;
     float y;
@@ -12,12 +13,13 @@ typedef struct Vector3 {
 + (instancetype)shared;
 - (Vector3)getCameraPosition;
 - (void)spawnItem:(NSString *)name at:(Vector3)pos;
-@property (nonatomic, assign) void* spawnMethod;
 @end
 
+// --- Mod Menu Controller ---
 @interface ModMenuController : UIViewController <UIPickerViewDelegate, UIPickerViewDataSource>
 @property (nonatomic, strong) UIView *container;
-@property (nonatomic, strong) UITextField *xIn, *yIn, *zIn, *qtyIn; // Added qtyIn
+@property (nonatomic, strong) UIButton *menuToggleButton;
+@property (nonatomic, strong) UITextField *xIn, *yIn, *zIn, *qtyIn;
 @property (nonatomic, strong) UIPickerView *itemPicker;
 @property (nonatomic, strong) NSArray *availableItems;
 @end
@@ -26,45 +28,77 @@ typedef struct Vector3 {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.availableItems = @[@"stellarsword_blue", @"flamethrower_skull", @"rpg_smshr"]; 
-    [self setupMenuUI];
+    self.availableItems = @[@"stellarsword_blue", @"flamethrower_skull", @"rpg_smshr", @"item_backpack"]; 
+    [self setupUI];
 }
 
-- (void)setupMenuUI {
-    self.container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 520)]; // Increased height
+- (void)setupUI {
+    // 1. Floating Toggle Button (Visible when menu is closed)
+    self.menuToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.menuToggleButton.frame = CGRectMake(40, 40, 70, 40);
+    [self.menuToggleButton setTitle:@"MENU" forState:UIControlStateNormal];
+    self.menuToggleButton.backgroundColor = [[UIColor purpleColor] colorWithAlphaComponent:0.8];
+    [self.menuToggleButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.menuToggleButton.layer.cornerRadius = 10;
+    self.menuToggleButton.hidden = YES; // Hidden when menu is open
+    [self.menuToggleButton addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.menuToggleButton];
+
+    // 2. Main Menu Container
+    self.container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 520)];
     self.container.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.95];
     self.container.layer.cornerRadius = 20;
+    self.container.layer.borderWidth = 1.5;
+    self.container.layer.borderColor = [UIColor purpleColor].CGColor;
     self.container.center = self.view.center;
     [self.view addSubview:self.container];
 
-    // X, Y, Z Fields
-    self.xIn = [self addField:@"X Coord" at:40];
-    self.yIn = [self addField:@"Y Coord" at:80];
-    self.zIn = [self addField:@"Z Coord" at:120];
-    
-    // Quantity Field
-    self.qtyIn = [self addField:@"Quantity (e.g. 10)" at:160];
-    self.qtyIn.text = @"1"; // Default to 1
+    // Close Button
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeBtn.frame = CGRectMake(310, 10, 30, 30);
+    [closeBtn setTitle:@"X" forState:UIControlStateNormal];
+    [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
+    [closeBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+    [self.container addSubview:closeBtn];
 
-    self.itemPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(25, 200, 300, 150)];
+    // Inputs (X, Y, Z, Qty)
+    self.xIn = [self addField:@"X Coord" at:50];
+    self.yIn = [self addField:@"Y Coord" at:90];
+    self.zIn = [self addField:@"Z Coord" at:130];
+    self.qtyIn = [self addField:@"Quantity (1-100)" at:170];
+    self.qtyIn.text = @"1";
+
+    // Item Picker
+    self.itemPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(25, 210, 300, 150)];
     self.itemPicker.delegate = self;
     [self.container addSubview:self.itemPicker];
 
-    UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    spawnBtn.frame = CGRectMake(75, 370, 200, 50);
-    [spawnBtn setTitle:@"GENERATE ITEMS" forState:UIControlStateNormal];
+    // Spawn Button
+    UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    spawnBtn.frame = CGRectMake(75, 430, 200, 50);
+    [spawnBtn setTitle:@"SPAWN ITEMS" forState:UIControlStateNormal];
+    spawnBtn.backgroundColor = [UIColor greenColor];
+    [spawnBtn setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+    spawnBtn.layer.cornerRadius = 12;
     [spawnBtn addTarget:self action:@selector(handleSpawn) forControlEvents:UIControlEventTouchUpInside];
     [self.container addSubview:spawnBtn];
 }
 
 - (UITextField*)addField:(NSString*)ph at:(CGFloat)y {
-    UITextField *t = [[UITextField alloc] initWithFrame:CGRectMake(75, y, 200, 30)];
+    UITextField *t = [[UITextField alloc] initWithFrame:CGRectMake(75, y, 200, 35)];
     t.placeholder = ph;
     t.backgroundColor = [UIColor whiteColor];
     t.borderStyle = UITextBorderStyleRoundedRect;
     t.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
     [self.container addSubview:t];
     return t;
+}
+
+- (void)toggleMenu {
+    BOOL isCurrentlyHidden = self.container.hidden;
+    self.container.hidden = !isCurrentlyHidden;
+    self.menuToggleButton.hidden = isCurrentlyHidden;
+    [self.view endEditing:YES];
 }
 
 - (void)handleSpawn {
@@ -78,22 +112,18 @@ typedef struct Vector3 {
     }
 
     NSString *selected = self.availableItems[[self.itemPicker selectedRowInComponent:0]];
-    
-    // --- Quantity Loop ---
     int count = [self.qtyIn.text intValue];
-    if (count <= 0) count = 1; // Safety check
-    if (count > 100) count = 100; // Anti-crash limit
+    if (count <= 0) count = 1;
+    if (count > 100) count = 100;
 
     for (int i = 0; i < count; i++) {
-        // We add a tiny offset to each spawn so they don't occupy the exact same physics space
-        Vector3 jitterPos = finalPos;
-        jitterPos.x += (i * 0.1f); 
-        
-        [[GameHelper shared] spawnItem:selected at:jitterPos];
+        Vector3 jitter = finalPos;
+        jitter.x += (i * 0.15f); // Tiny offset to prevent physics crash
+        [[GameHelper shared] spawnItem:selected at:jitter];
     }
 }
 
-// Landscape support
+// Support Landscape Rotation
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
@@ -101,12 +131,13 @@ typedef struct Vector3 {
     } completion:nil];
 }
 
-// Picker Boilerplate...
+// Picker Delegates
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView { return 1; }
 - (NSInteger)pickerView:(UIPickerView *)pickerView numberOfRowsInComponent:(NSInteger)component { return self.availableItems.count; }
 - (NSString *)pickerView:(UIPickerView *)pickerView titleForRow:(NSInteger)row forComponent:(NSInteger)component { return self.availableItems[row]; }
+
 @end
 
 %ctor {
-    NSLog(@"[Astraeus] Spawner Ready with Quantity Support");
+    NSLog(@"[Astraeus] Fully Featured Menu Loaded");
 }
