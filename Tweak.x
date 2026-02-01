@@ -4,23 +4,20 @@
 
 typedef struct Vector3 { float x; float y; float z; } Vector3;
 
-@interface GameHelper : NSObject
-+ (instancetype)shared;
-- (void)spawnItem:(NSString *)name at:(Vector3)pos;
-@end
-
-@implementation GameHelper
-+ (instancetype)shared {
-    static GameHelper *inst;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ inst = [[GameHelper alloc] init]; });
-    return inst;
-}
-- (void)spawnItem:(NSString *)name at:(Vector3)pos {
-    // Spawning logic bridge
+// --- CUSTOM PASSTHROUGH WINDOW ---
+@interface AstraeusWindow : UIWindow @end
+@implementation AstraeusWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hitView = [super hitTest:point withEvent:event];
+    // If the hit is the background window itself, or the root view, return nil to pass touch to game
+    if (hitView == self || hitView == self.rootViewController.view) {
+        return nil; 
+    }
+    return hitView; // Otherwise, let the user touch the buttons/sliders
 }
 @end
 
+// --- Mod Menu Controller ---
 @interface ModMenuController : UIViewController <UIPickerViewDelegate, UIPickerViewDataSource>
 @property (nonatomic, strong) UIVisualEffectView *blurContainer;
 @property (nonatomic, strong) UIButton *circleButton;
@@ -35,7 +32,10 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    // CLEAR BACKGROUND is essential so you can see the game!
+    self.view.backgroundColor = [UIColor clearColor];
     self.availableItems = @[@"stellarsword_blue", @"flamethrower_skull", @"rpg_smshr", @"item_backpack"];
+    
     [self setupCircleButton];
     [self setupMainSection];
 }
@@ -47,7 +47,7 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
     self.circleButton.layer.cornerRadius = 32.5; 
     self.circleButton.layer.borderWidth = 2;
     self.circleButton.layer.borderColor = [UIColor whiteColor].CGColor;
-    [self.circleButton setTitle:@"A" forState:UIControlStateNormal]; // 'A' for Astraeus
+    [self.circleButton setTitle:@"A" forState:UIControlStateNormal];
     self.circleButton.titleLabel.font = [UIFont boldSystemFontOfSize:24];
     
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
@@ -74,7 +74,7 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
     self.blurContainer.hidden = YES;
     [self.view addSubview:self.blurContainer];
 
-    // BRANDING LABEL
+    // BRANDING: Astraeus - AC Mod Menu
     UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, 320, 30)];
     titleLabel.text = @"Astraeus - AC Mod Menu";
     titleLabel.textColor = [UIColor purpleColor];
@@ -82,7 +82,7 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
     titleLabel.textAlignment = NSTextAlignmentCenter;
     [self.blurContainer.contentView addSubview:titleLabel];
 
-    // Separated X, Y, Z Fields
+    // XYZ Fields
     [self addLabel:@"SPAWN POSITION (X | Y | Z)" at:65];
     self.xField = [self addSmallField:90 xPos:40];
     self.yField = [self addSmallField:90 xPos:125];
@@ -114,7 +114,6 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
     spawn.backgroundColor = [UIColor purpleColor];
     spawn.layer.cornerRadius = 15;
     [spawn setTitle:@"GENERATE" forState:UIControlStateNormal];
-    [spawn addTarget:self action:@selector(onSpawn) forControlEvents:UIControlEventTouchUpInside];
     [self.blurContainer.contentView addSubview:spawn];
 
     // Styled X Close Button
@@ -152,31 +151,28 @@ typedef struct Vector3 { float x; float y; float z; } Vector3;
 - (void)toggleMenu {
     self.blurContainer.hidden = !self.blurContainer.hidden;
     self.circleButton.hidden = !self.blurContainer.hidden;
-    [self.view endEditing:YES]; // Keyboard fix
+    [self.view endEditing:YES]; 
 }
 
-- (void)onSpawn {
-    Vector3 p = {[self.xField.text floatValue], [self.yField.text floatValue], [self.zField.text floatValue]};
-    NSString *name = self.availableItems[[self.itemPicker selectedRowInComponent:0]];
-    for(int i=0; i<(int)self.qtySlider.value; i++) {
-        p.x += 0.15f; 
-        [[GameHelper shared] spawnItem:name at:p];
-    }
-}
-
+// Picker Boilerplate
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)p { return 1; }
 - (NSInteger)pickerView:(UIPickerView *)p numberOfRowsInComponent:(NSInteger)c { return self.availableItems.count; }
 - (NSString *)pickerView:(UIPickerView *)p titleForRow:(NSInteger)r forComponent:(NSInteger)c { return self.availableItems[r]; }
-
 @end
+
+// --- THE NEW FIXED INJECTOR ---
+static AstraeusWindow *modWindow;
 
 %ctor {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIWindow *window = [UIApplication sharedApplication].keyWindow;
-        if (window) {
-            ModMenuController *vc = [[ModMenuController alloc] init];
-            [window addSubview:vc.view];
-            [window.rootViewController addChildViewController:vc];
-        }
+        // We create a separate window for the menu so it doesn't mess with the game window
+        modWindow = [[AstraeusWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        modWindow.rootViewController = [[ModMenuController alloc] init];
+        modWindow.windowLevel = UIWindowLevelStatusBar + 1; // Put it above EVERYTHING
+        modWindow.backgroundColor = [UIColor clearColor];
+        [modWindow makeKeyAndVisible];
+        
+        // This is the secret sauce: pass touches through the window!
+        modWindow.userInteractionEnabled = YES;
     });
 }
