@@ -2,24 +2,33 @@
 #import <mach-o/dyld.h>
 #import <substrate.h>
 
-// --- Structures ---
-struct Vector3 { float x, y, z; };
+// --- 1. Fix: Proper Struct Typedef for Compiler ---
+typedef struct Vector3 {
+    float x;
+    float y;
+    float z;
+} Vector3;
 
-// --- Global Pointers (The "Hooks") ---
-static void* (*_il2cpp_domain_get)();
-static void* (*_il2cpp_domain_get_assemblies)(void* domain, size_t* size);
-static void* (*_il2cpp_string_new)(const char* str);
-static void* (*_runtime_invoke)(void* method, void* obj, void** params, void** exc);
-
-// --- GameHelper: The Brain that finds the game logic ---
+// --- 2. Interface Declarations ---
 @interface GameHelper : NSObject
 + (instancetype)shared;
 - (void)setupOffsets;
 - (Vector3)getCameraPosition;
 - (void)spawnItem:(NSString *)name at:(Vector3)pos;
 @property (nonatomic, assign) void* spawnMethod;
+@property (nonatomic, assign) void* il2cpp_string_new_ptr;
+@property (nonatomic, assign) void* runtime_invoke_ptr;
 @end
 
+@interface ModMenuController : UIViewController <UIPickerViewDelegate, UIPickerViewDataSource>
+@property (nonatomic, strong) UIView *container;
+@property (nonatomic, strong) UITextField *xIn, *yIn, *zIn;
+@property (nonatomic, strong) UIPickerView *itemPicker;
+@property (nonatomic, strong) NSArray *availableItems;
+@property (nonatomic, assign) BOOL isUnlocked;
+@end
+
+// --- 3. GameHelper Implementation ---
 @implementation GameHelper
 + (instancetype)shared {
     static GameHelper *inst;
@@ -29,39 +38,41 @@ static void* (*_runtime_invoke)(void* method, void* obj, void** params, void** e
 }
 
 - (void)setupOffsets {
-    // This uses the strings you sent to find the 'AnimalCompany' assembly
-    // and resolves the SpawnItem method address.
-    NSLog(@"[Lackson] Resolving IL2CPP Methods...");
-    // Real implementation would use il2cpp_class_get_method_from_name here
+    // These would be resolved via dlsym or your Resolver logic
+    self.il2cpp_string_new_ptr = dlsym(RTLD_DEFAULT, "il2cpp_string_new");
+    self.runtime_invoke_ptr = dlsym(RTLD_DEFAULT, "il2cpp_runtime_invoke");
+    // self.spawnMethod = resolve spawn method here...
 }
 
 - (Vector3)getCameraPosition {
-    // Logic to hook UnityEngine.Camera.get_main().get_transform().get_position()
-    return (Vector3){10.0f, 5.0f, 10.0f}; // Placeholder
+    // Placeholder: In real use, you'd hook Camera.get_main
+    return (Vector3){0.0f, 0.0f, 0.0f};
 }
 
 - (void)spawnItem:(NSString *)name at:(Vector3)pos {
-    if (!self.spawnMethod) return;
-    void* itemStr = _il2cpp_string_new([name UTF8String]);
-    void* params[] = { itemStr, &pos };
-    _runtime_invoke(self.spawnMethod, NULL, params, NULL);
+    if (!self.spawnMethod || !self.il2cpp_string_new_ptr) return;
+    
+    // Convert NSString to IL2CPP String
+    void* (*_strNew)(const char*) = (void*(*)(const char*))self.il2cpp_string_new_ptr;
+    void* il2cppStr = _strNew([name UTF8String]);
+    
+    // Setup params for runtime_invoke
+    void* params[] = { il2cppStr, &pos };
+    void* (*_invoke)(void*, void*, void**, void**) = (void*(*)(void*, void*, void**, void**))self.runtime_invoke_ptr;
+    _invoke(self.spawnMethod, NULL, params, NULL);
 }
 @end
 
-// --- ModMenuController: The UI that supports Landscape & XYZ ---
-@interface ModMenuController : UIViewController
-@property (nonatomic, strong) UIView *container;
-@property (nonatomic, strong) UITextField *xIn, *yIn, *zIn;
-@end
-
+// --- 4. UI Implementation with Landscape & XYZ Support ---
 @implementation ModMenuController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.availableItems = @[@"stellarsword_blue", @"flamethrower_skull", @"rpg_smshr", @"teleport_gun"]; 
     [self setupMenuUI];
 }
 
-// Landscape Mode Support: Recalculates center during rotation
+// Fix: Support Landscape Orientation
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
@@ -70,51 +81,68 @@ static void* (*_runtime_invoke)(void* method, void* obj, void** params, void** e
 }
 
 - (void)setupMenuUI {
-    self.container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 450)];
-    self.container.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.9];
-    self.container.layer.cornerRadius = 15;
+    self.container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 350, 480)];
+    self.container.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.05 alpha:0.95];
+    self.container.layer.cornerRadius = 20;
+    self.container.layer.borderWidth = 2;
+    self.container.layer.borderColor = [UIColor purpleColor].CGColor;
     self.container.center = self.view.center;
     [self.view addSubview:self.container];
 
-    // Manual XYZ Inputs
-    self.xIn = [self addField:@"X" at:50];
-    self.yIn = [self addField:@"Y" at:90];
-    self.zIn = [self addField:@"Z" at:130];
+    // X, Y, Z Fields
+    self.xIn = [self addField:@"X Coordinate" at:40];
+    self.yIn = [self addField:@"Y Coordinate" at:80];
+    self.zIn = [self addField:@"Z Coordinate" at:120];
 
+    // Item Picker
+    self.itemPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(25, 160, 300, 150)];
+    self.itemPicker.delegate = self;
+    self.itemPicker.dataSource = self;
+    [self.container addSubview:self.itemPicker];
+
+    // Action Button
     UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    spawnBtn.frame = CGRectMake(75, 200, 200, 50);
-    [spawnBtn setTitle:@"SPAWN ITEM" forState:UIControlStateNormal];
-    [spawnBtn addTarget:self action:@selector(doSpawn) forControlEvents:UIControlEventTouchUpInside];
+    spawnBtn.frame = CGRectMake(75, 330, 200, 50);
+    [spawnBtn setTitle:@"GENERATE ITEM" forState:UIControlStateNormal];
+    [spawnBtn setTitleColor:[UIColor greenColor] forState:UIControlStateNormal];
+    [spawnBtn addTarget:self action:@selector(handleSpawn) forControlEvents:UIControlEventTouchUpInside];
     [self.container addSubview:spawnBtn];
 }
 
-- (UITextField*)addField:(NSString*)p at:(CGFloat)y {
-    UITextField *t = [[UITextField alloc] initWithFrame:CGRectMake(125, y, 100, 30)];
-    t.placeholder = p;
+- (UITextField*)addField:(NSString*)placeholder at:(CGFloat)y {
+    UITextField *t = [[UITextField alloc] initWithFrame:CGRectMake(75, y, 200, 30)];
+    t.placeholder = placeholder;
     t.backgroundColor = [UIColor whiteColor];
     t.borderStyle = UITextBorderStyleRoundedRect;
+    t.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
     [self.container addSubview:t];
     return t;
 }
 
-- (void)doSpawn {
-    Vector3 target;
-    // Check if user entered manual XYZ
+- (void)handleSpawn {
+    Vector3 finalPos;
+    // logic: If X field is used, use manual coords. If empty, use Camera.
     if (self.xIn.text.length > 0) {
-        target.x = [self.xIn.text floatValue];
-        target.y = [self.yIn.text floatValue];
-        target.z = [self.zIn.text floatValue];
+        finalPos.x = [self.xIn.text floatValue];
+        finalPos.y = [self.yIn.text floatValue];
+        finalPos.z = [self.zIn.text floatValue];
     } else {
-        // Default to Camera position
-        target = [[GameHelper shared] getCameraPosition];
+        finalPos = [[GameHelper shared] getCameraPosition];
     }
-    
-    [[GameHelper shared] spawnItem:@"item_demon_sword" at:target];
+
+    NSString *selected = self.availableItems[[self.itemPicker selectedRowInComponent:0]];
+    [[GameHelper shared] spawnItem:selected at:finalPos];
 }
+
+// Picker Boilerplate
+- (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView { return 1; }
+- (NSInteger)pickerView:(UIPickerView *)pickerView numberOfRowsInComponent:(NSInteger)component { return self.availableItems.count; }
+- (NSString *)pickerView:(UIPickerView *)pickerView titleForRow:(NSInteger)row forComponent:(NSInteger)component { return self.availableItems[row]; }
+
 @end
 
-// --- The Constructor: Runs when the dylib loads ---
+// --- 5. Tweak Entry Point ---
 %ctor {
     [[GameHelper shared] setupOffsets];
-    NSLog(@"[Lackson] Dylib Loaded and Hooks Ready.");
+    NSLog(@"[Astraeus] Mod Menu Initialized");
 }
