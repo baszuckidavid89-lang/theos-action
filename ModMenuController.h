@@ -1,29 +1,16 @@
-#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 
-@interface ModMenuController : UIViewController <UIPickerViewDelegate, UIPickerViewDataSource, UITextFieldDelegate>
+@interface IL2CPPResolver : NSObject
+@property (nonatomic, assign) BOOL isInitialized;
+@property (nonatomic, assign) void* (*domain_get)();
+@property (nonatomic, assign) void** (*domain_get_assemblies)(void* domain, size_t* size);
+@property (nonatomic, assign) void* (*assembly_get_image)(void* assembly);
+@property (nonatomic, assign) void* (*class_from_name)(void* image, const char* ns, const char* name);
+@property (nonatomic, assign) void* (*class_get_method_from_name)(void* klass, const char* name, int args);
+@property (nonatomic, assign) void* (*runtimeInvoke)(void* method, void* obj, void** params, void** exc);
+@property (nonatomic, assign) void* (*stringNew)(const char* str);
 
-// --- UI Elements ---
-@property (nonatomic, strong) UIVisualEffectView *blurContainer;
-@property (nonatomic, strong) UISegmentedControl *tabControl;
-@property (nonatomic, strong) UIView *itemsView, *settingsView, *moneyView;
-@property (nonatomic, strong) UIButton *circleButton;
-@property (nonatomic, strong) UIPickerView *itemPicker;
-
-// --- Data & Search ---
-@property (nonatomic, strong) NSArray *availableItems;
-@property (nonatomic, strong) NSMutableArray *filteredItems;
-@property (nonatomic, strong) UITextField *searchBar, *xField, *yField, *zField;
-@property (nonatomic, strong) UIStepper *qtyStepper;
-@property (nonatomic, strong) UILabel *qtyLabel;
-
-// --- State Management ---
-@property (nonatomic, assign) NSInteger selectedItemIndex;
-@property (nonatomic, assign) BOOL isUnlocked;
-
-// --- Core Methods ---
-- (void)setupUI;
-- (void)toggleMenu;
-- (void)spawnSelectedItem;
-- (void)giveMoney;
-
++ (instancetype)sharedResolver;
+- (void)initialize;
+- (void*)getMethodFromClass:(const char*)className methodName:(const char*)methodName args:(int)args;
 @end
