@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Astraeus
 
 # IMPORTANT: All .mm files from your dump must be listed here
-Astraeus_FILES = Tweak.x ModMenuController.mm GameHelper.mm IL2CPPResolver.mm NetworkHelper.mm
+Astraeus_FILES = Tweak.x ModMenuController.mm GameHelper.mm IL2CPPResolver.mm
 Astraeus_FRAMEWORKS = UIKit CoreGraphics QuartzCore AudioToolbox
 Astraeus_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 
